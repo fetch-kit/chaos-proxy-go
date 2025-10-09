@@ -3,6 +3,8 @@ builds:
   - main: ./main.go
     goos: [linux, windows, darwin]
     goarch: [amd64, arm64]
+    ldflags:
+      - "-X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}"
 archives:
   - format: tar.gz
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
@@ -12,5 +14,4 @@ release:
   github:
     owner: fetch-kit
     name: chaos-proxy-go
-ldflags:
-      - "-X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}"
+
