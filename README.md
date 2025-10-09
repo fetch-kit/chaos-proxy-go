@@ -21,7 +21,7 @@
 
 ## Installation
 
-Download the latest release from [GitHub Releases](https://github.com/your-org/chaos-proxy-go/releases) or build from source:
+Download the latest release from [GitHub Releases](https://github.com/fetch-kit/chaos-proxy-go/releases) or build from source:
 
 ```sh
 go build -o chaos-proxy-go .
@@ -42,7 +42,7 @@ go build -o chaos-proxy-go .
 ### Programmatic API
 
 ```go
-import "your-org/chaos-proxy-go/internal/proxy"
+import "fetch-kit/chaos-proxy-go/internal/proxy"
 
 // Load config and start server
 cfg := config.Load("chaos.yaml")
