@@ -1,0 +1,8 @@
+target: "https://httpbin.org"
+port: 5000
+routes:
+  "GET /get":
+    - latency:
+        ms: 5000
+  "GET /post":
+    - dropConnection:

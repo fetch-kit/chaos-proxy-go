@@ -1,0 +1,21 @@
+repos:
+  - repo: https://github.com/dnephin/pre-commit-golang
+    rev: v0.5.1
+    hooks:
+      # - id: go-fmt
+      # - id: go-imports
+      - id: go-lint
+      - id: go-vet
+
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v2.5.0
+    hooks:
+      - id: golangci-lint
+
+  - repo: local
+    hooks:
+      - id: go-test
+        name: go test
+        entry: go test ./...
+        language: system
+        pass_filenames: false

@@ -1,0 +1,43 @@
+# Binaries and build output
+dist/
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+
+# Go modules
+vendor/
+
+# IDE/editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Dependency directories
+node_modules/
+
+# Coverage and test output
+coverage.out
+*.coverprofile
+
+# GoReleaser
+release/
+
+# Misc
+.env
+.env.*
+
+# Go workspace file
+go.work
