@@ -1,5 +1,5 @@
-[![Build](https://github.com/your-org/chaos-proxy-go/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/chaos-proxy-go/actions)
-[![GitHub stars](https://img.shields.io/github/stars/your-org/chaos-proxy-go?style=social)](https://github.com/your-org/chaos-proxy-go)
+[![Build](https://github.com/fetch-kit/chaos-proxy-go/actions/workflows/ci.yml/badge.svg)](https://github.com/fetch-kit/chaos-proxy-go/actions)
+[![GitHub stars](https://img.shields.io/github/stars/fetch-kit/chaos-proxy-go?style=social)](https://github.com/fetch-kit/chaos-proxy-go)
 
 # chaos-proxy-go
 
