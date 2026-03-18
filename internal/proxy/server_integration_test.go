@@ -38,7 +38,10 @@ func TestIntegration_BasicProxy(t *testing.T) {
 	}
 
 	// Create proxy server
-	ps := New(cfg, false)
+	ps, err := New(cfg, false)
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
 
 	// Start proxy as httptest.Server
 	proxySrv := httptest.NewServer(ps.router)
@@ -93,7 +96,10 @@ func TestIntegration_LatencyMiddleware(t *testing.T) {
 		Routes: map[string][]map[string]any{},
 	}
 
-	ps := New(cfg, false)
+	ps, err := New(cfg, false)
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
 	proxySrv := httptest.NewServer(ps.router)
 	defer proxySrv.Close()
 
@@ -147,7 +153,10 @@ func TestIntegration_FailMiddleware(t *testing.T) {
 		Routes: map[string][]map[string]any{},
 	}
 
-	ps := New(cfg, false)
+	ps, err := New(cfg, false)
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
 	proxySrv := httptest.NewServer(ps.router)
 	defer proxySrv.Close()
 
@@ -206,7 +215,10 @@ func TestIntegration_HeaderTransform(t *testing.T) {
 		Routes: map[string][]map[string]any{},
 	}
 
-	ps := New(cfg, false)
+	ps, err := New(cfg, false)
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
 	proxySrv := httptest.NewServer(ps.router)
 	defer proxySrv.Close()
 
@@ -277,7 +289,10 @@ func TestIntegration_BodyTransformJSON(t *testing.T) {
 		Routes: map[string][]map[string]any{},
 	}
 
-	ps := New(cfg, false)
+	ps, err := New(cfg, false)
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
 	proxySrv := httptest.NewServer(ps.router)
 	defer proxySrv.Close()
 
@@ -344,7 +359,10 @@ func TestIntegration_RouteSpecificMiddleware(t *testing.T) {
 		},
 	}
 
-	ps := New(cfg, false)
+	ps, err := New(cfg, false)
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
 	proxySrv := httptest.NewServer(ps.router)
 	defer proxySrv.Close()
 
@@ -423,7 +441,10 @@ func TestIntegration_404NotFound(t *testing.T) {
 		Routes: map[string][]map[string]any{},
 	}
 
-	ps := New(cfg, false)
+	ps, err := New(cfg, false)
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
 	proxySrv := httptest.NewServer(ps.router)
 	defer proxySrv.Close()
 
@@ -477,7 +498,10 @@ func TestIntegration_UpstreamError(t *testing.T) {
 		Routes: map[string][]map[string]any{},
 	}
 
-	ps := New(cfg, false)
+	ps, err := New(cfg, false)
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
 	proxySrv := httptest.NewServer(ps.router)
 	defer proxySrv.Close()
 
@@ -524,7 +548,10 @@ func TestIntegration_ConcurrentRequests(t *testing.T) {
 		Routes: map[string][]map[string]any{},
 	}
 
-	ps := New(cfg, false)
+	ps, err := New(cfg, false)
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
 	proxySrv := httptest.NewServer(ps.router)
 	defer proxySrv.Close()
 
@@ -587,7 +614,10 @@ func TestIntegration_ServerShutdown(t *testing.T) {
 		Routes: map[string][]map[string]any{},
 	}
 
-	ps := New(cfg, false)
+	ps, err := New(cfg, false)
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
 	proxySrv := httptest.NewServer(ps.router)
 
 	// Send a request to ensure the server is running

@@ -1,12 +1,14 @@
 package proxy
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"time"
 
 	"chaos-proxy-go/internal/config"
 	"chaos-proxy-go/internal/middleware"
@@ -14,16 +16,40 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// loggingResponseWriter wraps http.ResponseWriter to capture the status code
+type loggingResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+	written    bool
+}
+
+func (lw *loggingResponseWriter) WriteHeader(code int) {
+	if !lw.written {
+		lw.statusCode = code
+		lw.written = true
+	}
+	lw.ResponseWriter.WriteHeader(code)
+}
+
+func (lw *loggingResponseWriter) Write(b []byte) (int, error) {
+	if !lw.written {
+		lw.statusCode = http.StatusOK
+		lw.written = true
+	}
+	return lw.ResponseWriter.Write(b)
+}
+
 // Server represents the chaos proxy server
 type Server struct {
-	router   *chi.Mux
-	config   *config.Config
-	verbose  bool
-	registry *middleware.Registry
+	httpServer *http.Server
+	router     *chi.Mux
+	config     *config.Config
+	verbose    bool
+	registry   *middleware.Registry
 }
 
 // New creates a new proxy server
-func New(cfg *config.Config, verbose bool) *Server {
+func New(cfg *config.Config, verbose bool) (*Server, error) {
 	router := chi.NewRouter()
 	registry := middleware.DefaultRegistry
 
@@ -34,18 +60,26 @@ func New(cfg *config.Config, verbose bool) *Server {
 		registry: registry,
 	}
 
-	server.setupRoutes()
-	return server
+	if err := server.setupRoutes(); err != nil {
+		return nil, err
+	}
+
+	server.httpServer = &http.Server{
+		Addr:    fmt.Sprintf(":%d", cfg.Port),
+		Handler: router,
+	}
+
+	return server, nil
 }
 
 // setupRoutes configures the middleware chain and proxy routes
-func (s *Server) setupRoutes() {
+func (s *Server) setupRoutes() error {
 	// Apply global middlewares
 	for _, middlewareMap := range s.config.Global {
 		for name, config := range middlewareMap {
 			handler, err := s.registry.Create(name, config)
 			if err != nil {
-				log.Fatalf("Failed to create global middleware %s: %v", name, err)
+				return fmt.Errorf("failed to create global middleware %s: %w", name, err)
 			}
 			s.router.Use(handler)
 			if s.verbose {
@@ -64,7 +98,7 @@ func (s *Server) setupRoutes() {
 			for name, config := range middlewareMap {
 				handler, err := s.registry.Create(name, config)
 				if err != nil {
-					log.Fatalf("Failed to create route middleware %s for route %s: %v", name, route, err)
+					return fmt.Errorf("failed to create route middleware %s for route %s: %w", name, route, err)
 				}
 				routeHandler = handler(routeHandler)
 				if s.verbose {
@@ -85,6 +119,7 @@ func (s *Server) setupRoutes() {
 
 	// Default catch-all proxy handler for routes without specific middlewares
 	s.router.HandleFunc("/*", s.createProxyHandler().ServeHTTP)
+	return nil
 }
 
 // parseRoute parses method and path from route string
@@ -98,29 +133,53 @@ func (s *Server) parseRoute(route string) (method, path string) {
 
 // createProxyHandler creates the proxy handler
 func (s *Server) createProxyHandler() http.Handler {
-	targetURL, _ := url.Parse(s.config.Target)
+	targetURL, err := url.Parse(s.config.Target)
+	if err != nil {
+		// This should never happen since target is validated in New(), but handle gracefully
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			log.Printf("Invalid target URL %q: %v", s.config.Target, err)
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte("Internal proxy error"))
+		})
+	}
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 	// Use default http.Transport for best performance (unless skip-verify is needed)
 	proxy.Transport = http.DefaultTransport
 	// No custom Director or error handler
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.verbose {
+			log.Printf("[%s] %s %s", r.RemoteAddr, r.Method, r.RequestURI)
+		}
+
+		start := time.Now()
+
+		// Wrap response writer to capture status code if verbose logging is enabled
+		var lw *loggingResponseWriter
+		if s.verbose {
+			lw = &loggingResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+			w = lw
+		}
+
 		// Minimal mutation: only set Host if needed
 		r.Host = targetURL.Host
 		proxy.ServeHTTP(w, r)
+
+		if s.verbose && lw != nil {
+			elapsed := time.Since(start)
+			log.Printf("[%s] %s %s -> %d (%v)", r.RemoteAddr, r.Method, r.RequestURI, lw.statusCode, elapsed)
+		}
 	})
 }
 
 // Start starts the proxy server
 func (s *Server) Start() error {
-	addr := fmt.Sprintf(":%d", s.config.Port)
 	if s.verbose {
-		log.Printf("Starting chaos proxy on %s, forwarding to %s", addr, s.config.Target)
+		log.Printf("Starting chaos proxy on %s, forwarding to %s", s.httpServer.Addr, s.config.Target)
 	}
-	return http.ListenAndServe(addr, s.router)
+	return s.httpServer.ListenAndServe()
 }
 
-// Shutdown gracefully shuts down the server
-func (s *Server) Shutdown() error {
-	// Chi doesn't have a built-in shutdown method, would need http.Server for graceful shutdown
-	return nil
+// Shutdown gracefully shuts down the server without interrupting active connections.
+func (s *Server) Shutdown(ctx context.Context) error {
+	return s.httpServer.Shutdown(ctx)
 }

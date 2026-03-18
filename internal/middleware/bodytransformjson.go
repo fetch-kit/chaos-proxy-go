@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 // BodyOps defines set/delete operations for JSON body transformation.
@@ -25,7 +26,7 @@ func BodyTransformJSONMiddleware(config BodyTransformJSONConfig) func(http.Handl
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Request body transformation
-			if config.Request != nil && r.Header.Get("Content-Type") == "application/json" {
+			if config.Request != nil && strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
 				var body map[string]interface{}
 				data, err := io.ReadAll(r.Body)
 				if err != nil {
@@ -74,7 +75,7 @@ func BodyTransformJSONMiddleware(config BodyTransformJSONConfig) func(http.Handl
 				var body map[string]interface{}
 				var out []byte
 				var err error
-				if ct == "application/json" && json.Unmarshal(data, &body) == nil {
+				if strings.HasPrefix(ct, "application/json") && json.Unmarshal(data, &body) == nil {
 					for k, v := range rw.ops.Set {
 						body[k] = v
 					}

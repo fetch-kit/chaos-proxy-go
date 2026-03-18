@@ -28,15 +28,24 @@ func newRateLimitStore() *rateLimitStore {
 	return &rateLimitStore{store: make(map[string]*rateLimitEntry)}
 }
 
-func (s *rateLimitStore) get(key string) *rateLimitEntry {
+// increment atomically retrieves/resets the entry and increments the count,
+// returning the current count, remaining, and reset time — all under a single lock.
+func (s *rateLimitStore) increment(key string, limit int, window time.Duration) (count, remaining, reset int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	now := time.Now()
 	entry, ok := s.store[key]
-	if !ok || time.Now().After(entry.ExpiresAt) {
-		entry = &rateLimitEntry{Count: 0, ExpiresAt: time.Now()}
+	if !ok || now.After(entry.ExpiresAt) {
+		entry = &rateLimitEntry{Count: 0, ExpiresAt: now.Add(window)}
 		s.store[key] = entry
 	}
-	return entry
+	entry.Count++
+	remaining = limit - entry.Count
+	if remaining < 0 {
+		remaining = 0
+	}
+	reset = int(time.Until(entry.ExpiresAt).Seconds())
+	return entry.Count, remaining, reset
 }
 
 // RateLimitMiddleware returns a middleware that rate-limits requests.
@@ -57,20 +66,11 @@ func RateLimitMiddleware(config RateLimitConfig) func(http.Handler) http.Handler
 			} else {
 				key = r.RemoteAddr
 			}
-			entry := store.get(key)
-			store.mu.Lock()
-			if time.Now().After(entry.ExpiresAt) {
-				entry.Count = 0
-				entry.ExpiresAt = time.Now().Add(window)
-			}
-			entry.Count++
-			remaining := config.Limit - entry.Count
-			reset := int(time.Until(entry.ExpiresAt).Seconds())
-			store.mu.Unlock()
+			count, remaining, reset := store.increment(key, config.Limit, window)
 			w.Header().Set("X-RateLimit-Remaining", itoa(remaining))
 			w.Header().Set("X-RateLimit-Reset", itoa(reset))
 			w.Header().Set("X-RateLimit-Limit", itoa(config.Limit))
-			if entry.Count > config.Limit {
+			if count > config.Limit {
 				w.WriteHeader(http.StatusTooManyRequests)
 				_, _ = w.Write([]byte("Rate limit exceeded"))
 				return

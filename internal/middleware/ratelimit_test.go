@@ -3,6 +3,8 @@ package middleware
 import (
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -114,5 +116,43 @@ func TestRateLimitMiddleware_KeyFallbackToRemoteAddr(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	if rec.Code != 429 {
 		t.Errorf("expected 429 for fallback, got %d", rec.Code)
+	}
+}
+
+func TestRateLimitMiddleware_ConcurrentLimit(t *testing.T) {
+	const limit = 10
+	const goroutines = 50
+	config := RateLimitConfig{Limit: limit, WindowMs: 5000}
+	mw := RateLimitMiddleware(config)
+
+	var allowed, rejected int64
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+
+	var wg sync.WaitGroup
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req := httptest.NewRequest("GET", "/", nil)
+			req.RemoteAddr = "1.2.3.4:9999"
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code == 200 {
+				atomic.AddInt64(&allowed, 1)
+			} else {
+				atomic.AddInt64(&rejected, 1)
+			}
+		}()
+	}
+	wg.Wait()
+
+	// Exactly `limit` requests should have been allowed, the rest rejected
+	if allowed != limit {
+		t.Errorf("expected exactly %d allowed requests, got %d (rejected: %d)", limit, allowed, rejected)
+	}
+	if rejected != goroutines-limit {
+		t.Errorf("expected exactly %d rejected requests, got %d", goroutines-limit, rejected)
 	}
 }

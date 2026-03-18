@@ -29,7 +29,11 @@ func LatencyRangeMiddleware(conf LatencyRangeConfig) func(http.Handler) http.Han
 				}
 				delay += n
 			}
-			time.Sleep(time.Duration(delay) * time.Millisecond)
+			select {
+			case <-time.After(time.Duration(delay) * time.Millisecond):
+			case <-r.Context().Done():
+				return
+			}
 			next.ServeHTTP(w, r)
 		})
 	}

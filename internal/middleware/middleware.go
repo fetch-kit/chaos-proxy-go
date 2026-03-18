@@ -10,7 +10,6 @@ import (
 // Factory is a generic middleware factory function.
 type Factory[T any] func(config T) func(http.Handler) http.Handler
 
-// Registry represents the middleware registry
 // Registry represents the middleware registry.
 type Registry struct {
 	factories map[string]func(config any) (func(http.Handler) http.Handler, error)
@@ -31,6 +30,7 @@ func init() {
 	register(DefaultRegistry, "cors", CorsMiddleware)
 	register(DefaultRegistry, "dropConnection", DropConnectionMiddleware)
 	register(DefaultRegistry, "rateLimit", RateLimitMiddleware)
+	register(DefaultRegistry, "throttle", ThrottleMiddleware)
 	register(DefaultRegistry, "headerTransform", HeaderTransformMiddleware)
 	register(DefaultRegistry, "bodyTransformJSON", BodyTransformJSONMiddleware)
 }

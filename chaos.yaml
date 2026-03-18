@@ -4,5 +4,5 @@ routes:
   "GET /get":
     - latency:
         ms: 5000
-  "GET /post":
+  "POST /post":
     - dropConnection:

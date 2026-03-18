@@ -16,7 +16,11 @@ func LatencyMiddleware(config LatencyConfig) func(http.Handler) http.Handler {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			time.Sleep(delay)
+			select {
+			case <-time.After(delay):
+			case <-r.Context().Done():
+				return
+			}
 			next.ServeHTTP(w, r)
 		})
 	}
