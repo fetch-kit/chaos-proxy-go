@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - 2026-03-19
+### Added
+- Runtime config reload via `POST /reload` endpoint without process restart.
+- `ReloadConfig` programmatic API for dynamic configuration updates.
+- Full atomic snapshot semantics: in-flight requests are deterministic, new requests use updated config immediately.
+- Integration tests for reload success, failure/rollback, HTTP endpoint, and concurrent rejection.
+
 ## [0.1.0] - 2026-03-18
 ### Added
 - Graceful shutdown using `http.Server` with OS signal handling.
