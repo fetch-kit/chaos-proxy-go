@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1] - 2026-03-19
+### Added
+- Test added for in-flight request snapshot isolation during config reload.
+
 ## [0.2.0] - 2026-03-19
 ### Added
 - Runtime config reload via `POST /reload` endpoint without process restart.
