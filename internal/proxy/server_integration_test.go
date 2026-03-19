@@ -889,3 +889,77 @@ func TestIntegration_ReloadEndpoint_InvalidJSON(t *testing.T) {
 		t.Errorf("expected 200 after failed reload, got %d", resp2.StatusCode)
 	}
 }
+
+func TestIntegration_InFlightRequestUsesOldSnapshot(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	// Upstream with a delay to keep the request in-flight
+	delayMs := 500
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(time.Duration(delayMs) * time.Millisecond)
+		w.WriteHeader(200)
+		if _, err := w.Write([]byte("upstream")); err != nil {
+			t.Errorf("write: %v", err)
+		}
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{
+		Target: upstream.URL,
+		Port:   0,
+		Global: nil,
+		Routes: map[string][]map[string]any{},
+	}
+
+	ps, err := New(cfg, false)
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
+	proxySrv := httptest.NewServer(ps.router)
+	defer proxySrv.Close()
+
+	// Fire a request that will be delayed at the upstream
+	requestDone := make(chan int, 1)
+	go func() {
+		resp, err := http.Get(proxySrv.URL + "/test")
+		if err != nil {
+			t.Errorf("request failed: %v", err)
+			requestDone <- 0
+			return
+		}
+		_ = resp.Body.Close()
+		requestDone <- resp.StatusCode
+	}()
+
+	// Give request time to reach the proxy and start waiting for upstream
+	time.Sleep(100 * time.Millisecond)
+
+	// Reload with a fail middleware — new requests should be intercepted
+	newCfg := &config.Config{
+		Target: upstream.URL,
+		Global: []map[string]any{{"fail": map[string]any{"status": 503, "body": "after reload"}}},
+		Routes: map[string][]map[string]any{},
+	}
+	result := ps.ReloadConfig(newCfg)
+	if !result.OK {
+		t.Fatalf("reload failed: %s", result.Error)
+	}
+
+	// Wait for the in-flight request to complete
+	statusCode := <-requestDone
+	if statusCode != 200 {
+		t.Errorf("in-flight request should use old snapshot (200), got %d", statusCode)
+	}
+
+	// New request after reload should get fail middleware (503)
+	resp, err := http.Get(proxySrv.URL + "/test")
+	if err != nil {
+		t.Fatalf("post-reload request failed: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != 503 {
+		t.Errorf("post-reload request should use new snapshot (503), got %d", resp.StatusCode)
+	}
+}
