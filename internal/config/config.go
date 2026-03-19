@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -44,6 +45,19 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse YAML: %w", err)
 	}
 
+	return validate(&cfg)
+}
+
+// ParseJSON parses and validates a config from a JSON byte slice.
+func ParseJSON(data []byte) (*Config, error) {
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse JSON: %w", err)
+	}
+	return validate(&cfg)
+}
+
+func validate(cfg *Config) (*Config, error) {
 	// Set defaults
 	if cfg.Port == 0 {
 		cfg.Port = 5000
@@ -54,5 +68,5 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("target is required")
 	}
 
-	return &cfg, nil
+	return cfg, nil
 }

@@ -16,6 +16,7 @@
 - Supports both request and response interception/modification
 - Method+path route support (e.g., `GET /api/users`)
 - Robust short-circuiting: middlewares halt further processing when sending a response or dropping a connection
+- Runtime config reload via `POST /reload` without process restart
 
 ---
 
@@ -49,17 +50,98 @@ import (
 	"chaos-proxy-go/internal/proxy"
 )
 
-// Load config and start server
 cfg, err := config.Load("chaos.yaml")
 if err != nil {
 	log.Fatalf("failed to load config: %v", err)
 }
-server := proxy.New(cfg, false)
-if err := server.Start(); err != nil {
-	log.Fatalf("failed to start server: %v", err)
+server, err := proxy.New(cfg, false)
+if err != nil {
+	log.Fatalf("failed to create server: %v", err)
 }
-// ...
+if err := server.Start(); err != nil {
+	log.Fatalf("server error: %v", err)
+}
 ```
+
+---
+
+## Runtime Config Reload
+
+Chaos Proxy supports full runtime reloads without process restart.
+
+- Endpoint: `POST /reload`
+- Content-Type: `application/json`
+- Payload: full config snapshot (same shape as `chaos.yaml`, but JSON)
+- Behavior: build-then-swap — all-or-nothing, the active state is never partially updated
+- Body size limit: 1 MB
+
+### Request Example
+
+```sh
+curl -X POST http://localhost:5000/reload \
+  -H "Content-Type: application/json" \
+  -d '{
+    "target": "http://localhost:4000",
+    "port": 5000,
+    "global": [
+      { "latency": { "ms": 120 } },
+      { "failRandomly": { "rate": 0.05, "status": 503 } }
+    ],
+    "routes": {
+      "GET /users/:id": [
+        { "failNth": { "n": 3, "status": 500 } }
+      ]
+    }
+  }'
+```
+
+### Success Response
+
+```json
+{
+  "ok": true,
+  "version": 2,
+  "reload_ms": 3
+}
+```
+
+### Failure Responses
+
+| Status | Reason |
+|--------|--------|
+| `400` | Invalid or unparseable config (active state is unchanged) |
+| `409` | Reload already in progress |
+| `415` | Wrong `Content-Type` (must be `application/json`) |
+
+```json
+{
+  "ok": false,
+  "error": "target is required",
+  "version": 1,
+  "reload_ms": 0
+}
+```
+
+### Programmatic Reload
+
+`proxy.New(...)` returns a `*Server` with a `ReloadConfig` method:
+
+```go
+result := server.ReloadConfig(newCfg)
+if !result.OK {
+    log.Printf("reload failed: %s", result.Error)
+} else {
+    log.Printf("reloaded to version %d in %dms", result.Version, result.ReloadMs)
+}
+```
+
+### Edge-Case Semantics
+
+- **In-flight requests** are deterministic: they run on the snapshot captured at the moment the request arrived, immune to concurrent reloads.
+- **New requests** after a successful swap immediately use the new snapshot.
+- **All-or-nothing**: if parse, validate, or middleware-build fails, the active state is unchanged.
+- **Middleware state resets** on reload (e.g., rate-limit and failNth counters start fresh).
+- **Concurrent reloads** are rejected with `409`; the second caller must retry.
 
 ---
 

@@ -650,3 +650,242 @@ func TestIntegration_ServerShutdown(t *testing.T) {
 		t.Errorf("expected error after server shutdown, got nil")
 	}
 }
+
+func TestIntegration_ReloadConfig_Success(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		if _, err := w.Write([]byte("upstream")); err != nil {
+			t.Errorf("write: %v", err)
+		}
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{
+		Target: upstream.URL,
+		Port:   0,
+		Global: nil,
+		Routes: map[string][]map[string]any{},
+	}
+
+	ps, err := New(cfg, false)
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
+	proxySrv := httptest.NewServer(ps.router)
+	defer proxySrv.Close()
+
+	// Before reload — should reach upstream (200)
+	resp, err := http.Get(proxySrv.URL + "/test")
+	if err != nil {
+		t.Fatalf("pre-reload request failed: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Errorf("expected 200 before reload, got %d", resp.StatusCode)
+	}
+
+	// Reload with forced failure config
+	newCfg := &config.Config{
+		Target: upstream.URL,
+		Global: []map[string]any{{"fail": map[string]any{"status": 503, "body": "forced"}}},
+		Routes: map[string][]map[string]any{},
+	}
+	result := ps.ReloadConfig(newCfg)
+	if !result.OK {
+		t.Fatalf("expected reload to succeed, got error: %s", result.Error)
+	}
+	if result.Version != 2 {
+		t.Errorf("expected version 2, got %d", result.Version)
+	}
+
+	// After reload — should be intercepted by fail middleware (503)
+	resp2, err := http.Get(proxySrv.URL + "/test")
+	if err != nil {
+		t.Fatalf("post-reload request failed: %v", err)
+	}
+	_ = resp2.Body.Close()
+	if resp2.StatusCode != 503 {
+		t.Errorf("expected 503 after reload, got %d", resp2.StatusCode)
+	}
+}
+
+func TestIntegration_ReloadConfig_InvalidRollback(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Stable", "old")
+		w.WriteHeader(200)
+		if _, err := w.Write([]byte("ok")); err != nil {
+			t.Errorf("write: %v", err)
+		}
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{
+		Target: upstream.URL,
+		Port:   0,
+		Global: nil,
+		Routes: map[string][]map[string]any{},
+	}
+
+	ps, err := New(cfg, false)
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
+	proxySrv := httptest.NewServer(ps.router)
+	defer proxySrv.Close()
+
+	// Attempt reload with an unknown middleware — must fail
+	badCfg := &config.Config{
+		Target: upstream.URL,
+		Global: []map[string]any{{"nonexistentMiddleware": map[string]any{}}},
+		Routes: map[string][]map[string]any{},
+	}
+	result := ps.ReloadConfig(badCfg)
+	if result.OK {
+		t.Fatal("expected reload to fail for unknown middleware")
+	}
+	if result.Version != 1 {
+		t.Errorf("expected version to stay 1, got %d", result.Version)
+	}
+
+	// Active runtime must be unchanged — upstream still reachable
+	resp, err := http.Get(proxySrv.URL + "/test")
+	if err != nil {
+		t.Fatalf("request after failed reload failed: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Errorf("expected 200 after failed reload, got %d", resp.StatusCode)
+	}
+}
+
+func TestIntegration_ReloadEndpoint_HTTP(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		if _, err := w.Write([]byte("ok")); err != nil {
+			t.Errorf("write: %v", err)
+		}
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{
+		Target: upstream.URL,
+		Port:   0,
+		Global: nil,
+		Routes: map[string][]map[string]any{},
+	}
+
+	ps, err := New(cfg, false)
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
+	proxySrv := httptest.NewServer(ps.router)
+	defer proxySrv.Close()
+
+	// Valid reload via HTTP
+	reloadBody := fmt.Sprintf(`{"target":%q,"global":[{"fail":{"status":503,"body":"via http"}}],"routes":{}}`, upstream.URL)
+	resp, err := http.Post(
+		proxySrv.URL+"/reload",
+		"application/json",
+		strings.NewReader(reloadBody),
+	)
+	if err != nil {
+		t.Fatalf("reload request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200 from /reload, got %d: %s", resp.StatusCode, body)
+	}
+	var result ReloadResult
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode reload response: %v", err)
+	}
+	if !result.OK {
+		t.Errorf("expected ok=true, got error: %s", result.Error)
+	}
+	if result.Version != 2 {
+		t.Errorf("expected version 2, got %d", result.Version)
+	}
+
+	// Subsequent request should use new config
+	resp2, err := http.Get(proxySrv.URL + "/test")
+	if err != nil {
+		t.Fatalf("post-reload request failed: %v", err)
+	}
+	_ = resp2.Body.Close()
+	if resp2.StatusCode != 503 {
+		t.Errorf("expected 503 after reload, got %d", resp2.StatusCode)
+	}
+}
+
+func TestIntegration_ReloadEndpoint_InvalidJSON(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		if _, err := w.Write([]byte("ok")); err != nil {
+			t.Errorf("write: %v", err)
+		}
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{
+		Target: upstream.URL,
+		Port:   0,
+		Global: nil,
+		Routes: map[string][]map[string]any{},
+	}
+
+	ps, err := New(cfg, false)
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
+	proxySrv := httptest.NewServer(ps.router)
+	defer proxySrv.Close()
+
+	// Missing target field
+	resp, err := http.Post(
+		proxySrv.URL+"/reload",
+		"application/json",
+		strings.NewReader(`{"port":5000}`),
+	)
+	if err != nil {
+		t.Fatalf("reload request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != 400 {
+		t.Errorf("expected 400 for missing target, got %d", resp.StatusCode)
+	}
+	var result ReloadResult
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+	if result.OK {
+		t.Error("expected ok=false for invalid config")
+	}
+	if result.Version != 1 {
+		t.Errorf("expected version to remain 1, got %d", result.Version)
+	}
+
+	// Active runtime still works
+	resp2, err := http.Get(proxySrv.URL + "/test")
+	if err != nil {
+		t.Fatalf("request after failed reload failed: %v", err)
+	}
+	_ = resp2.Body.Close()
+	if resp2.StatusCode != 200 {
+		t.Errorf("expected 200 after failed reload, got %d", resp2.StatusCode)
+	}
+}
