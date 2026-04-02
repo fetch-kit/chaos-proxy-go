@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-03-19
+### Added
+- Optional seed support for failRandomly, dropConnection, and latencyRange for reproducible randomness
+
+### Fixed
+- `bodyTransformJSON` now skips response mutation for streamed responses and preserves pass-through behavior
+
 ## [0.2.1] - 2026-03-19
 ### Added
 - Test added for in-flight request snapshot isolation during config reload.
