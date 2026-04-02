@@ -12,8 +12,8 @@ var latencyRangeRNG *rand.Rand
 
 // LatencyRangeConfig is the configuration for the LatencyRange middleware.
 type LatencyRangeConfig struct {
-	MinMs int `yaml:"minMs"`
-	MaxMs int `yaml:"maxMs"`
+	MinMs int    `yaml:"minMs"`
+	MaxMs int    `yaml:"maxMs"`
 	Seed  *int64 `yaml:"seed"`
 }
 

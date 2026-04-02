@@ -252,3 +252,49 @@ func TestBodyTransformJSONMiddleware_ResponseSetDelete(t *testing.T) {
 		t.Errorf("expected removeMe to be deleted in response")
 	}
 }
+
+func TestBodyTransformJSONMiddleware_ResponseSkipsStreamedSSE(t *testing.T) {
+	cfg := BodyTransformJSONConfig{
+		Response: &BodyOps{Set: map[string]interface{}{"foo": 42}},
+	}
+	mw := BodyTransformJSONMiddleware(cfg)
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		if _, err := w.Write([]byte(`{"bar":1}`)); err != nil {
+			t.Errorf("write: %v", err)
+		}
+	}))
+	req := httptest.NewRequest("GET", "/", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Body.String() != `{"bar":1}` {
+		t.Fatalf("expected streamed response to be unchanged, got %q", rec.Body.String())
+	}
+}
+
+func TestBodyTransformJSONMiddleware_ResponseTransformsNonStream(t *testing.T) {
+	cfg := BodyTransformJSONConfig{
+		Response: &BodyOps{Set: map[string]interface{}{"foo": 42}},
+	}
+	mw := BodyTransformJSONMiddleware(cfg)
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		payload := []byte(`{"bar":1}`)
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Length", "9")
+		if _, err := w.Write(payload); err != nil {
+			t.Errorf("write: %v", err)
+		}
+	}))
+	req := httptest.NewRequest("GET", "/", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	var out map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out["foo"] != float64(42) {
+		t.Fatalf("expected transformed non-stream response to include foo=42, got %v", out["foo"])
+	}
+}

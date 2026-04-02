@@ -70,6 +70,10 @@ func BodyTransformJSONMiddleware(config BodyTransformJSONConfig) func(http.Handl
 				}
 				next.ServeHTTP(rw, r)
 
+				if rw.isStream {
+					return
+				}
+
 				ct := rw.Header().Get("Content-Type")
 				data := rw.buf.Bytes()
 				var body map[string]interface{}
@@ -115,15 +119,44 @@ type bodyTransformJSONResponseWriter struct {
 	buf         *bytes.Buffer
 	statusCode  int
 	wroteHeader bool
+	isStream    bool
+	decided     bool
 }
 
 func (w *bodyTransformJSONResponseWriter) WriteHeader(statusCode int) {
 	if !w.wroteHeader {
 		w.wroteHeader = true
 		w.statusCode = statusCode
+		if !w.decided {
+			w.isStream = isStreamResponseHeaders(w.Header())
+			w.decided = true
+		}
+		if w.isStream {
+			w.ResponseWriter.WriteHeader(statusCode)
+		}
 	}
 }
 
 func (w *bodyTransformJSONResponseWriter) Write(data []byte) (int, error) {
+	if !w.wroteHeader {
+		w.wroteHeader = true
+		w.statusCode = http.StatusOK
+	}
+	if !w.decided {
+		w.isStream = isStreamResponseHeaders(w.Header())
+		w.decided = true
+	}
+	if w.isStream {
+		return w.ResponseWriter.Write(data)
+	}
 	return w.buf.Write(data)
+}
+
+func isStreamResponseHeaders(h http.Header) bool {
+	contentLength := h.Get("Content-Length")
+	transferEncoding := strings.ToLower(h.Get("Transfer-Encoding"))
+	contentType := strings.ToLower(h.Get("Content-Type"))
+
+	return contentLength == "" &&
+		(strings.Contains(transferEncoding, "chunked") || strings.HasPrefix(contentType, "text/event-stream"))
 }
