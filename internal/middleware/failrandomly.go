@@ -3,6 +3,7 @@ package middleware
 import (
 	"math/rand"
 	"net/http"
+	"sync"
 )
 
 // FailRandomlyConfig is the configuration for the FailRandomly middleware.
@@ -10,6 +11,7 @@ type FailRandomlyConfig struct {
 	Rate   float64 `yaml:"rate"`
 	Status int     `yaml:"status"`
 	Body   string  `yaml:"body"`
+	Seed   *int64  `yaml:"seed"`
 }
 
 // failRandomlyRNG is the RNG used by FailRandomlyMiddleware. Tests can override it.
@@ -25,11 +27,20 @@ func FailRandomlyMiddleware(conf FailRandomlyConfig) func(http.Handler) http.Han
 	if body == "" {
 		body = "failed by chaos-proxy-go"
 	}
+	var rng *rand.Rand
+	if conf.Seed != nil {
+		rng = rand.New(rand.NewSource(*conf.Seed))
+	} else {
+		rng = failRandomlyRNG
+	}
+	var rngMu sync.Mutex
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			var v float64
-			if failRandomlyRNG != nil {
-				v = failRandomlyRNG.Float64()
+			if rng != nil {
+				rngMu.Lock()
+				v = rng.Float64()
+				rngMu.Unlock()
 			} else {
 				v = rand.Float64()
 			}

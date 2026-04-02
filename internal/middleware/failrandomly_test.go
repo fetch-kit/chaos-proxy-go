@@ -43,3 +43,34 @@ func TestFailRandomlyMiddlewareDeterministic(t *testing.T) {
 		t.Errorf("expected ~500 successes, got %d", successes)
 	}
 }
+
+func TestFailRandomlyMiddlewareSeedDeterministic(t *testing.T) {
+	seed := int64(123)
+	config := FailRandomlyConfig{Rate: 0.5, Status: 504, Body: "failrandomly", Seed: &seed}
+
+	mwA := FailRandomlyMiddleware(config)
+	mwB := FailRandomlyMiddleware(config)
+
+	handlerA := mwA(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	handlerB := mwB(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte("ok"))
+	}))
+
+	for i := 0; i < 100; i++ {
+		reqA := httptest.NewRequest("GET", "/", nil)
+		reqB := httptest.NewRequest("GET", "/", nil)
+		recA := httptest.NewRecorder()
+		recB := httptest.NewRecorder()
+
+		handlerA.ServeHTTP(recA, reqA)
+		handlerB.ServeHTTP(recB, reqB)
+
+		if recA.Code != recB.Code || recA.Body.String() != recB.Body.String() {
+			t.Fatalf("seeded middleware diverged at request %d: A=(%d,%q) B=(%d,%q)", i, recA.Code, recA.Body.String(), recB.Code, recB.Body.String())
+		}
+	}
+}

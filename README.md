@@ -154,11 +154,11 @@ See the [original chaos-proxy README](https://github.com/fetch-kit/chaos-proxy) 
 ## Middleware Primitives
 
 - `latency(ms)` — delay every request
-- `latencyRange(minMs, maxMs)` — random delay
+- `latencyRange(minMs, maxMs, seed?)` — random delay (deterministic when `seed` is set)
 - `fail({ status, body })` — always fail
-- `failRandomly({ rate, status, body })` — fail with probability
+- `failRandomly({ rate, status, body, seed? })` — fail with probability (deterministic when `seed` is set)
 - `failNth({ n, status, body })` — fail every nth request
-- `dropConnection({ prob })` — randomly drop connection (`prob` defaults to `1.0` if omitted)
+- `dropConnection({ prob, seed? })` — randomly drop connection (`prob` defaults to `1.0` if omitted; deterministic when `seed` is set)
 - `rateLimit({ limit, windowMs, key })` — rate limiting (by header key if configured, otherwise by client remote address in ip:port format)
 - `cors({ origin, methods, headers })` — enable and configure CORS headers
 - `throttle({ rate, chunkSize, burst })` — throttles bandwidth per request (`rate` is bytes/second)

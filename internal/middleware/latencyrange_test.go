@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 )
@@ -62,5 +63,23 @@ func TestLatencyRangeMiddlewareClientAbort(t *testing.T) {
 	}
 	if elapsed >= 500*time.Millisecond {
 		t.Errorf("expected early exit on client abort, but took %v", elapsed)
+	}
+}
+
+func TestLatencyRangeMiddlewareSeedDeterministic(t *testing.T) {
+	seed := int64(789)
+	config := LatencyRangeConfig{MinMs: 0, MaxMs: 20, Seed: &seed}
+
+	rngA := rand.New(rand.NewSource(seed))
+	rngB := rand.New(rand.NewSource(seed))
+	var muA sync.Mutex
+	var muB sync.Mutex
+
+	for i := 0; i < 100; i++ {
+		delayA := sampleLatencyDelayMs(config, rngA, &muA)
+		delayB := sampleLatencyDelayMs(config, rngB, &muB)
+		if delayA != delayB {
+			t.Fatalf("seeded latency sequence diverged at index %d: A=%d B=%d", i, delayA, delayB)
+		}
 	}
 }

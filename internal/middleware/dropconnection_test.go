@@ -54,3 +54,35 @@ func TestDropConnectionMiddlewareDoesNotCallNext(t *testing.T) {
 		t.Error("next handler should not be called when connection is dropped")
 	}
 }
+
+func TestDropConnectionMiddlewareSeedDeterministic(t *testing.T) {
+	seed := int64(456)
+	config := DropConnectionConfig{Prob: 0.5, Seed: &seed}
+
+	mwA := DropConnectionMiddleware(config)
+	mwB := DropConnectionMiddleware(config)
+
+	for i := 0; i < 100; i++ {
+		calledA := false
+		calledB := false
+
+		handlerA := mwA(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calledA = true
+		}))
+		handlerB := mwB(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calledB = true
+		}))
+
+		reqA := httptest.NewRequest("GET", "/", nil)
+		reqB := httptest.NewRequest("GET", "/", nil)
+		recA := httptest.NewRecorder()
+		recB := httptest.NewRecorder()
+
+		handlerA.ServeHTTP(recA, reqA)
+		handlerB.ServeHTTP(recB, reqB)
+
+		if calledA != calledB {
+			t.Fatalf("seeded middleware diverged at request %d: A called=%v, B called=%v", i, calledA, calledB)
+		}
+	}
+}
