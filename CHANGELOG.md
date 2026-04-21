@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2026-04-21
+### Added
+- OpenTelemetry (OTel) support for exporting spans to any OTLP-compatible collector.
+- Documentation overhaul.
+
 ## [0.3.0] - 2026-03-19
 ### Added
 - Optional seed support for failRandomly, dropConnection, and latencyRange for reproducible randomness
