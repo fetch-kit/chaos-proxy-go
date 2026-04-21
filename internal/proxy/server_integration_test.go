@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -961,5 +962,187 @@ func TestIntegration_InFlightRequestUsesOldSnapshot(t *testing.T) {
 	_ = resp.Body.Close()
 	if resp.StatusCode != 503 {
 		t.Errorf("post-reload request should use new snapshot (503), got %d", resp.StatusCode)
+	}
+}
+
+func TestIntegration_ReloadConfig_OtelExporterReusedWhenUnchanged(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		if _, err := w.Write([]byte("upstream")); err != nil {
+			t.Errorf("write: %v", err)
+		}
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{
+		Target: upstream.URL,
+		Port:   0,
+		Otel: &config.OtelConfig{
+			ServiceName:     "chaos-proxy-go-test",
+			Endpoint:        "http://localhost:4318",
+			FlushIntervalMs: 1000,
+			MaxBatchSize:    10,
+			MaxQueueSize:    100,
+		},
+		Global: nil,
+		Routes: map[string][]map[string]any{},
+	}
+
+	ps, err := New(cfg, false)
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
+	defer func() { _ = ps.Shutdown(context.Background()) }()
+
+	if ps.exporter == nil {
+		t.Fatal("expected exporter to be initialized")
+	}
+	firstExporter := ps.exporter
+
+	newCfg := &config.Config{
+		Target: upstream.URL,
+		Port:   0,
+		Otel: &config.OtelConfig{
+			ServiceName:     "chaos-proxy-go-test",
+			Endpoint:        "http://localhost:4318",
+			FlushIntervalMs: 1000,
+			MaxBatchSize:    10,
+			MaxQueueSize:    100,
+		},
+		Global: nil,
+		Routes: map[string][]map[string]any{},
+	}
+
+	result := ps.ReloadConfig(newCfg)
+	if !result.OK {
+		t.Fatalf("expected reload success, got: %s", result.Error)
+	}
+
+	if ps.exporter != firstExporter {
+		t.Error("expected exporter to be reused when otel config is unchanged")
+	}
+}
+
+func TestIntegration_ReloadConfig_OtelExporterReplacedWhenChanged(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		if _, err := w.Write([]byte("upstream")); err != nil {
+			t.Errorf("write: %v", err)
+		}
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{
+		Target: upstream.URL,
+		Port:   0,
+		Otel: &config.OtelConfig{
+			ServiceName:     "chaos-proxy-go-test",
+			Endpoint:        "http://localhost:4318",
+			FlushIntervalMs: 1000,
+			MaxBatchSize:    10,
+			MaxQueueSize:    100,
+		},
+		Global: nil,
+		Routes: map[string][]map[string]any{},
+	}
+
+	ps, err := New(cfg, false)
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
+	defer func() { _ = ps.Shutdown(context.Background()) }()
+
+	if ps.exporter == nil {
+		t.Fatal("expected exporter to be initialized")
+	}
+	firstExporter := ps.exporter
+
+	newCfg := &config.Config{
+		Target: upstream.URL,
+		Port:   0,
+		Otel: &config.OtelConfig{
+			ServiceName:     "chaos-proxy-go-test",
+			Endpoint:        "http://localhost:4319",
+			FlushIntervalMs: 1000,
+			MaxBatchSize:    10,
+			MaxQueueSize:    100,
+		},
+		Global: nil,
+		Routes: map[string][]map[string]any{},
+	}
+
+	result := ps.ReloadConfig(newCfg)
+	if !result.OK {
+		t.Fatalf("expected reload success, got: %s", result.Error)
+	}
+
+	if ps.exporter == nil {
+		t.Fatal("expected exporter to remain initialized")
+	}
+	if ps.exporter == firstExporter {
+		t.Error("expected exporter to be replaced when otel config changes")
+	}
+}
+
+func TestIntegration_ReloadConfig_OtelExporterDisabled(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		if _, err := w.Write([]byte("upstream")); err != nil {
+			t.Errorf("write: %v", err)
+		}
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{
+		Target: upstream.URL,
+		Port:   0,
+		Otel: &config.OtelConfig{
+			ServiceName:     "chaos-proxy-go-test",
+			Endpoint:        "http://localhost:4318",
+			FlushIntervalMs: 1000,
+			MaxBatchSize:    10,
+			MaxQueueSize:    100,
+		},
+		Global: nil,
+		Routes: map[string][]map[string]any{},
+	}
+
+	ps, err := New(cfg, false)
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
+	defer func() { _ = ps.Shutdown(context.Background()) }()
+
+	if ps.exporter == nil {
+		t.Fatal("expected exporter to be initialized")
+	}
+
+	newCfg := &config.Config{
+		Target: upstream.URL,
+		Port:   0,
+		Otel:   nil,
+		Global: nil,
+		Routes: map[string][]map[string]any{},
+	}
+
+	result := ps.ReloadConfig(newCfg)
+	if !result.OK {
+		t.Fatalf("expected reload success, got: %s", result.Error)
+	}
+
+	if ps.exporter != nil {
+		t.Error("expected exporter to be nil after otel is removed")
 	}
 }

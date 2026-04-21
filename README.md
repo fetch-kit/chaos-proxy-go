@@ -7,6 +7,62 @@
 
 ---
 
+## Quick Start
+
+1. Download from [GitHub Releases](https://github.com/fetch-kit/chaos-proxy-go/releases) or build from source:
+
+   ```sh
+   go build -o chaos-proxy-go .
+   ```
+
+2. Create a minimal `chaos.yaml`:
+
+   ```yaml
+   target: "http://localhost:4000"
+   port: 5000
+   global:
+     - failRandomly:
+         rate: 0.1
+         status: 503
+   ```
+
+3. Run the proxy:
+
+   ```sh
+   ./chaos-proxy-go --config chaos.yaml --verbose
+   ```
+
+All traffic to `http://localhost:5000` is now forwarded to `http://localhost:4000` with 10% random 503 failures injected.
+
+---
+
+## Documentation
+
+- [Middleware reference](docs/middlewares.md) — all 11 built-in primitives with config tables
+- [Observability](docs/observability.md) — OpenTelemetry tracing, span attributes, connecting to a collector
+- [Hot reload](docs/hot-reload.md) — runtime config reload, endpoint spec, edge cases
+
+---
+
+## Presets
+
+Ready-made scenarios in the [`presets/`](presets/) folder:
+
+| Preset | Simulates |
+|--------|-----------|
+| [`flaky-backend.yaml`](presets/flaky-backend.yaml) | Unstable upstream: latency jitter, 5% 503s, 2% connection drops |
+| [`mobile-3g.yaml`](presets/mobile-3g.yaml) | Mobile 3G: 100–300ms latency, 50 KB/s bandwidth, 1% drops |
+| [`burst-errors.yaml`](presets/burst-errors.yaml) | Error bursts: every 5th fails with 500, plus 10% random 503s |
+| [`timeout-storm.yaml`](presets/timeout-storm.yaml) | Timeout storm: 1–8s delays, 10% drops, 15% instant 504s |
+
+Run a preset directly:
+
+```sh
+./chaos-proxy-go --config presets/flaky-backend.yaml
+```
+
+---
+
 ## Features
 
 - Simple configuration via a single `chaos.yaml` file
@@ -27,6 +83,8 @@ Download the latest release from [GitHub Releases](https://github.com/fetch-kit/
 ```sh
 go build -o chaos-proxy-go .
 ```
+
+Requires Go 1.21 or later.
 
 ---
 
@@ -147,7 +205,41 @@ if !result.OK {
 
 ## Configuration (`chaos.yaml`)
 
-See the [original chaos-proxy README](https://github.com/fetch-kit/chaos-proxy) for detailed config options. This Go port supports a compatible YAML structure.
+```yaml
+target: "http://localhost:4000"  # required
+port: 5000                       # default: 5000
+
+# Optional: OpenTelemetry tracing
+otel:
+  serviceName: "my-service"      # required if otel is set
+  endpoint: "http://localhost:4318" # required if otel is set
+  flushIntervalMs: 5000          # default
+  maxBatchSize: 100              # default
+  maxQueueSize: 1000             # default
+  headers:                       # optional OTLP request headers
+    x-api-key: "secret"
+
+# Global middleware — applied to every proxied request
+global:
+  - latencyRange:
+      minMs: 20
+      maxMs: 100
+  - failRandomly:
+      rate: 0.05
+      status: 503
+
+# Route-specific middleware — "METHOD /path" format
+routes:
+  GET /api/users:
+    - latency:
+        ms: 500
+  POST /api/orders:
+    - failNth:
+        n: 3
+        status: 500
+```
+
+See [docs/middlewares.md](docs/middlewares.md) for the full middleware reference and [docs/observability.md](docs/observability.md) for `otel` options.
 
 ---
 
@@ -197,6 +289,10 @@ Register custom middleware in Go. See the `internal/middleware` package for exam
 ## License
 
 MIT
+
+---
+
+Go port of [fetch-kit/chaos-proxy](https://github.com/fetch-kit/chaos-proxy).
 
 ---
 

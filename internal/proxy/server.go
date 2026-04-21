@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,6 +17,7 @@ import (
 
 	"chaos-proxy-go/internal/config"
 	"chaos-proxy-go/internal/middleware"
+	"chaos-proxy-go/internal/telemetry"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -71,6 +73,7 @@ type Server struct {
 	isReloading bool
 	verbose     bool
 	registry    *middleware.Registry
+	exporter    *telemetry.OtlpExporter
 }
 
 // New creates a new proxy server
@@ -82,10 +85,15 @@ func New(cfg *config.Config, verbose bool) (*Server, error) {
 		registry: registry,
 	}
 
-	state, err := server.buildState(cfg, 1)
+	initialExporter := createExporterForConfig(cfg)
+	state, err := server.buildState(cfg, 1, initialExporter)
 	if err != nil {
+		if initialExporter != nil {
+			initialExporter.Shutdown()
+		}
 		return nil, err
 	}
+	server.exporter = initialExporter
 	server.state.Store(state)
 
 	// Top-level handler: captures snapshot at request-entry for deterministic in-flight behavior.
@@ -110,8 +118,16 @@ func New(cfg *config.Config, verbose bool) (*Server, error) {
 }
 
 // buildState validates config and resolves a full middleware router.
-func (s *Server) buildState(cfg *config.Config, version int) (*runtimeState, error) {
+func (s *Server) buildState(cfg *config.Config, version int, exporter *telemetry.OtlpExporter) (*runtimeState, error) {
 	router := chi.NewRouter()
+
+	// Apply telemetry middleware first if otel is configured.
+	if cfg.Otel != nil {
+		if exporter == nil {
+			return nil, fmt.Errorf("otel is configured but exporter is nil")
+		}
+		router.Use(telemetry.NewMiddleware(*cfg.Otel, exporter))
+	}
 
 	// Apply global middlewares
 	for _, middlewareMap := range cfg.Global {
@@ -173,8 +189,14 @@ func (s *Server) ReloadConfig(newCfg *config.Config) ReloadResult {
 	}()
 
 	current := s.state.Load()
-	nextState, err := s.buildState(newCfg, current.version+1)
+	currentExporter := s.exporter
+	nextExporter, createdNew := reconcileExporter(current.cfg, currentExporter, newCfg)
+
+	nextState, err := s.buildState(newCfg, current.version+1, nextExporter)
 	if err != nil {
+		if createdNew && nextExporter != nil {
+			nextExporter.Shutdown()
+		}
 		return ReloadResult{
 			OK:       false,
 			Error:    err.Error(),
@@ -183,12 +205,42 @@ func (s *Server) ReloadConfig(newCfg *config.Config) ReloadResult {
 		}
 	}
 
+	if currentExporter != nil && currentExporter != nextExporter {
+		currentExporter.Shutdown()
+	}
+	s.exporter = nextExporter
 	s.state.Store(nextState)
 	return ReloadResult{
 		OK:       true,
 		Version:  nextState.version,
 		ReloadMs: time.Since(start).Milliseconds(),
 	}
+}
+
+func createExporterForConfig(cfg *config.Config) *telemetry.OtlpExporter {
+	if cfg == nil || cfg.Otel == nil {
+		return nil
+	}
+	return telemetry.NewExporter(*cfg.Otel)
+}
+
+func reconcileExporter(currentCfg *config.Config, currentExporter *telemetry.OtlpExporter, newCfg *config.Config) (*telemetry.OtlpExporter, bool) {
+	if newCfg == nil || newCfg.Otel == nil {
+		return nil, false
+	}
+
+	if currentExporter != nil && currentCfg != nil && otelConfigEqual(currentCfg.Otel, newCfg.Otel) {
+		return currentExporter, false
+	}
+
+	return telemetry.NewExporter(*newCfg.Otel), true
+}
+
+func otelConfigEqual(a, b *config.OtelConfig) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return reflect.DeepEqual(*a, *b)
 }
 
 // handleReload handles POST /reload requests.
@@ -304,5 +356,8 @@ func (s *Server) Start() error {
 
 // Shutdown gracefully shuts down the server without interrupting active connections.
 func (s *Server) Shutdown(ctx context.Context) error {
+	if s.exporter != nil {
+		s.exporter.Shutdown()
+	}
 	return s.httpServer.Shutdown(ctx)
 }

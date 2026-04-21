@@ -14,10 +14,22 @@ type MiddlewareConfig[T any] struct {
 	Config T
 }
 
+// OtelConfig holds OpenTelemetry exporter configuration.
+// Field names match chaos-proxy's YAML format exactly (camelCase) for config portability.
+type OtelConfig struct {
+	ServiceName     string            `yaml:"serviceName"`
+	Endpoint        string            `yaml:"endpoint"`
+	FlushIntervalMs int               `yaml:"flushIntervalMs"`
+	MaxBatchSize    int               `yaml:"maxBatchSize"`
+	MaxQueueSize    int               `yaml:"maxQueueSize"`
+	Headers         map[string]string `yaml:"headers"`
+}
+
 // Config represents the main configuration structure
 type Config struct {
 	Target string                      `yaml:"target"`
 	Port   int                         `yaml:"port"`
+	Otel   *OtelConfig                 `yaml:"otel"`
 	Global []map[string]any            `yaml:"global"`
 	Routes map[string][]map[string]any `yaml:"routes"`
 }
@@ -66,6 +78,24 @@ func validate(cfg *Config) (*Config, error) {
 	// Validate required fields
 	if cfg.Target == "" {
 		return nil, fmt.Errorf("target is required")
+	}
+
+	if cfg.Otel != nil {
+		if cfg.Otel.ServiceName == "" {
+			return nil, fmt.Errorf("otel.serviceName is required")
+		}
+		if cfg.Otel.Endpoint == "" {
+			return nil, fmt.Errorf("otel.endpoint is required")
+		}
+		if cfg.Otel.FlushIntervalMs == 0 {
+			cfg.Otel.FlushIntervalMs = 5000
+		}
+		if cfg.Otel.MaxBatchSize == 0 {
+			cfg.Otel.MaxBatchSize = 100
+		}
+		if cfg.Otel.MaxQueueSize == 0 {
+			cfg.Otel.MaxQueueSize = 1000
+		}
 	}
 
 	return cfg, nil
