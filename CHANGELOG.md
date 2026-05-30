@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.5.0] - UNRELEASED
+## [0.5.0] - 2026-05-30
 ### Added
 - `failFirstN` middleware: fails the first N requests, then passes through all subsequent requests. Config: `{ n, status?, body? }`.
 
