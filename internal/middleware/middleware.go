@@ -24,6 +24,7 @@ func init() {
 	}
 	register(DefaultRegistry, "latency", LatencyMiddleware)
 	register(DefaultRegistry, "fail", FailMiddleware)
+	register(DefaultRegistry, "failFirstN", FailFirstNMiddleware)
 	register(DefaultRegistry, "failNth", FailNthMiddleware)
 	register(DefaultRegistry, "failRandomly", FailRandomlyMiddleware)
 	register(DefaultRegistry, "latencyRange", LatencyRangeMiddleware)

@@ -67,7 +67,7 @@ Run a preset directly:
 
 - Simple configuration via a single `chaos.yaml` file
 - Programmatic API and CLI usage
-- Built-in middleware primitives: latency, latencyRange, fail, failRandomly, failNth, dropConnection, rateLimit, cors, throttle, headerTransform, bodyTransformJSON
+- Built-in middleware primitives: latency, latencyRange, fail, failRandomly, failFirstN, failNth, dropConnection, rateLimit, cors, throttle, headerTransform, bodyTransformJSON
 - Extensible registry for custom middleware
 - Supports both request and response interception/modification
 - Method+path route support (e.g., `GET /api/users`)
