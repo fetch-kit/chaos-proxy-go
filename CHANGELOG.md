@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - UNRELEASED
+### Added
+- `failFirstN` middleware: fails the first N requests, then passes through all subsequent requests. Config: `{ n, status?, body? }`.
+
 ## [0.4.1] - 2026-05-30
 ### Changed
 - Hardened CI and release workflows:
