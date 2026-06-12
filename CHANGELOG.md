@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.2] - 2026-06-12
+### Changed
+- Bumped GitHub Actions Go runtime to `1.25.11` in CI and release workflows.
+
+### Fixed
+- Restored passing `govulncheck` in CI/release after upstream Go standard library vulnerability updates.
+
 ## [0.5.0] - 2026-05-30
 ### Added
 - `failFirstN` middleware: fails the first N requests, then passes through all subsequent requests. Config: `{ n, status?, body? }`.
