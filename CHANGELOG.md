@@ -2,10 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-05-30
+### Added
+- `failFirstN` middleware: fails the first N requests, then passes through all subsequent requests. Config: `{ n, status?, body? }`.
+
+## [0.4.1] - 2026-05-30
+### Changed
+- Hardened CI and release workflows:
+	- pinned GitHub Actions to commit SHAs
+	- added `govulncheck` to CI and release checks
+	- pinned GoReleaser version in the release workflow
+	- tightened workflow permissions
+
+### Fixed
+- Bumped GitHub Actions Go runtime to `1.25.10` so vulnerability checks pass against patched standard library versions.
+
+### Dependencies
+- Updated Go modules via Dependabot (`go.mod` and `go.sum`).
+
 ## [0.4.0] - 2026-04-21
 ### Added
-- OpenTelemetry (OTel) support for exporting spans to any OTLP-compatible collector.
-- Documentation overhaul.
+- OpenTelemetry endpoint implementation.
 
 ## [0.3.0] - 2026-03-19
 ### Added

@@ -87,6 +87,27 @@ global:
 
 ---
 
+### `failFirstN`
+
+Fails the first N requests, then always passes through.
+
+```yaml
+global:
+  - failFirstN:
+      n: 3
+      status: 503
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `n` | int | yes | — | Fail the first n requests |
+| `status` | int | no | `503` | HTTP status code |
+| `body` | string | no | `"failed by chaos-proxy-go"` | Response body text |
+
+**Note:** Use `failFirstN` to simulate startup/initialization failures (fail first 3 requests, then stabilize). Use `failNth` for recurring patterns (fail every 5th request).
+
+---
+
 ### `failNth`
 
 Fails every nth request, then resets the counter.
