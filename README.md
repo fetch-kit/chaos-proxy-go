@@ -3,6 +3,9 @@
 
 # chaos-proxy-go
 
+
+> Part of the **[fetch-kit ecosystem](https://fetchkit.org)** - production-ready fetch utilities and chaos-testing tools.
+
 **chaos-proxy-go** is a Go port of [fetch-kit/chaos-proxy](https://github.com/fetch-kit/chaos-proxy): a proxy server for injecting configurable network chaos (latency, failures, connection drops, rate-limiting, etc.) into any HTTP or HTTPS traffic. Use it via CLI or programmatically to apply ordered middleware (global and per-route) and forward requests to your target server, preserving method, path, headers, query, and body.
 
 ---
