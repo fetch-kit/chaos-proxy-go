@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.6.0] - 2026-07-20
 ### Added
 - Structured `--verbose` observability logging: `key=value` events for startup,
   request begin/end, config reloads, proxy errors, and shutdown, with
