@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+### Added
+- Structured `--verbose` observability logging: `key=value` events for startup,
+  request begin/end, config reloads, proxy errors, and shutdown, with
+  sensitive query-string redaction and control-character sanitization. Warnings
+  and errors are written to stderr, info/debug to stdout.
+
+### Changed
+- Bumped GitHub Actions Go runtime to `1.25.12` in CI and release workflows to
+  clear the `GO-2026-5856` standard-library advisory.
+- Release workflow now mints a short-lived GitHub App token and announces
+  releases to Discord.
+
 ## [0.5.2] - 2026-06-12
 ### Changed
 - Bumped GitHub Actions Go runtime to `1.25.11` in CI and release workflows.

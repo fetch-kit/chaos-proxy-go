@@ -99,7 +99,11 @@ Requires Go 1.21 or later.
 ./chaos-proxy-go --config chaos.yaml [--verbose]
 ```
 - `--config <path>`: YAML config file (default `./chaos.yaml`)
-- `--verbose`: print loaded config, middleware setup, and per-request logs
+- `--verbose`: emit structured `key=value` observability logs for startup, each
+  request (`verbose.request.begin` / `verbose.request.end`), config reloads,
+  proxy errors, and shutdown. Sensitive query-string values (e.g. `token`,
+  `secret`, `password`, `api_key`) are redacted and control characters are
+  stripped. `INFO`/`DEBUG` lines go to stdout; `WARN`/`ERROR` to stderr.
 
 ### Programmatic API
 

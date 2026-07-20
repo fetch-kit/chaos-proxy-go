@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"chaos-proxy-go/internal/config"
+	"chaos-proxy-go/internal/logging"
 	"chaos-proxy-go/internal/middleware"
 	"chaos-proxy-go/internal/telemetry"
 
@@ -23,6 +24,11 @@ import (
 )
 
 const maxReloadBodyBytes = 1024 * 1024
+
+// ctxKey is a private type for request-scoped context values.
+type ctxKey int
+
+const requestIDKey ctxKey = iota
 
 // loggingResponseWriter wraps http.ResponseWriter to capture the status code
 type loggingResponseWriter struct {
@@ -49,9 +55,10 @@ func (lw *loggingResponseWriter) Write(b []byte) (int, error) {
 
 // runtimeState holds the resolved middleware router and config for one config version.
 type runtimeState struct {
-	cfg     *config.Config
-	router  *chi.Mux
-	version int
+	cfg             *config.Config
+	router          *chi.Mux
+	version         int
+	middlewareCount int
 }
 
 // ReloadResult is returned by ReloadConfig.
@@ -105,7 +112,47 @@ func New(cfg *config.Config, verbose bool) (*Server, error) {
 		}
 		// Capture snapshot — immune to any reload that happens during this request.
 		snap := server.state.Load()
-		snap.router.ServeHTTP(w, r)
+		if !server.verbose {
+			snap.router.ServeHTTP(w, r)
+			return
+		}
+
+		requestID := logging.CreateRequestID()
+		redactedPath := logging.RedactURLQuery(r.URL.RequestURI())
+		start := time.Now()
+
+		logging.EmitVerbose(true, "verbose.request.begin", map[string]any{
+			"req_id":           requestID,
+			"trace_id":         logging.ExtractTraceID(r.Header),
+			"method":           r.Method,
+			"path":             redactedPath,
+			"target":           snap.cfg.Target,
+			"version":          snap.version,
+			"middleware_count": snap.middlewareCount,
+		}, logging.LevelInfo)
+
+		lw := &loggingResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+		r = r.WithContext(context.WithValue(r.Context(), requestIDKey, requestID))
+		snap.router.ServeHTTP(lw, r)
+
+		status := lw.statusCode
+		result := "ok"
+		level := logging.LevelInfo
+		switch {
+		case status >= 500:
+			result = "error"
+			level = logging.LevelWarn
+		case status >= 400:
+			result = "client_error"
+		}
+		logging.EmitVerbose(true, "verbose.request.end", map[string]any{
+			"req_id":      requestID,
+			"method":      r.Method,
+			"path":        redactedPath,
+			"status":      status,
+			"duration_ms": time.Since(start).Milliseconds(),
+			"result":      result,
+		}, level)
 	})
 
 	server.router = topLevel
@@ -120,6 +167,7 @@ func New(cfg *config.Config, verbose bool) (*Server, error) {
 // buildState validates config and resolves a full middleware router.
 func (s *Server) buildState(cfg *config.Config, version int, exporter *telemetry.OtlpExporter) (*runtimeState, error) {
 	router := chi.NewRouter()
+	middlewareCount := 0
 
 	// Apply telemetry middleware first if otel is configured.
 	if cfg.Otel != nil {
@@ -127,6 +175,7 @@ func (s *Server) buildState(cfg *config.Config, version int, exporter *telemetry
 			return nil, fmt.Errorf("otel is configured but exporter is nil")
 		}
 		router.Use(telemetry.NewMiddleware(*cfg.Otel, exporter))
+		middlewareCount++
 	}
 
 	// Apply global middlewares
@@ -137,6 +186,7 @@ func (s *Server) buildState(cfg *config.Config, version int, exporter *telemetry
 				return nil, fmt.Errorf("failed to create global middleware %s: %w", name, err)
 			}
 			router.Use(handler)
+			middlewareCount++
 		}
 	}
 
@@ -166,12 +216,12 @@ func (s *Server) buildState(cfg *config.Config, version int, exporter *telemetry
 	// Default catch-all proxy handler
 	router.HandleFunc("/*", s.createProxyHandler(cfg.Target).ServeHTTP)
 
-	return &runtimeState{cfg: cfg, router: router, version: version}, nil
+	return &runtimeState{cfg: cfg, router: router, version: version, middlewareCount: middlewareCount}, nil
 }
 
 // ReloadConfig validates newCfg, builds a new runtime state, and atomically swaps it.
 // All-or-nothing: on any error the active state is unchanged.
-func (s *Server) ReloadConfig(newCfg *config.Config) ReloadResult {
+func (s *Server) ReloadConfig(newCfg *config.Config) (result ReloadResult) {
 	s.reloadMu.Lock()
 	if s.isReloading {
 		v := s.state.Load().version
@@ -182,10 +232,27 @@ func (s *Server) ReloadConfig(newCfg *config.Config) ReloadResult {
 	s.reloadMu.Unlock()
 
 	start := time.Now()
+	logging.EmitVerbose(s.verbose, "verbose.reload.begin", map[string]any{
+		"from_version": s.state.Load().version,
+	}, logging.LevelInfo)
 	defer func() {
 		s.reloadMu.Lock()
 		s.isReloading = false
 		s.reloadMu.Unlock()
+
+		level := logging.LevelInfo
+		if !result.OK {
+			level = logging.LevelWarn
+		}
+		fields := map[string]any{
+			"ok":        result.OK,
+			"version":   result.Version,
+			"reload_ms": result.ReloadMs,
+		}
+		if result.Error != "" {
+			fields["error"] = result.Error
+		}
+		logging.EmitVerbose(s.verbose, "verbose.reload.end", fields, level)
 	}()
 
 	current := s.state.Load()
@@ -322,26 +389,21 @@ func (s *Server) createProxyHandler(target string) http.Handler {
 	}
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 	proxy.Transport = http.DefaultTransport
+	if s.verbose {
+		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+			reqID, _ := r.Context().Value(requestIDKey).(string)
+			logging.EmitVerbose(true, "verbose.error", map[string]any{
+				"req_id":  reqID,
+				"class":   "proxy_error",
+				"status":  http.StatusBadGateway,
+				"message": err.Error(),
+			}, logging.LevelError)
+			w.WriteHeader(http.StatusBadGateway)
+		}
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.verbose {
-			log.Printf("[%s] %s %s", r.RemoteAddr, r.Method, r.RequestURI)
-		}
-
-		start := time.Now()
-
-		var lw *loggingResponseWriter
-		if s.verbose {
-			lw = &loggingResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
-			w = lw
-		}
-
 		r.Host = targetURL.Host
 		proxy.ServeHTTP(w, r)
-
-		if s.verbose && lw != nil {
-			elapsed := time.Since(start)
-			log.Printf("[%s] %s %s -> %d (%v)", r.RemoteAddr, r.Method, r.RequestURI, lw.statusCode, elapsed)
-		}
 	})
 }
 
@@ -349,13 +411,24 @@ func (s *Server) createProxyHandler(target string) http.Handler {
 func (s *Server) Start() error {
 	cfg := s.state.Load().cfg
 	if s.verbose {
-		log.Printf("Starting chaos proxy on %s, forwarding to %s", s.httpServer.Addr, cfg.Target)
+		logging.EmitVerbose(true, "verbose.startup", map[string]any{
+			"listen_addr":  s.httpServer.Addr,
+			"listen_port":  cfg.Port,
+			"target":       cfg.Target,
+			"otel_enabled": cfg.Otel != nil,
+		}, logging.LevelInfo)
 	}
 	return s.httpServer.ListenAndServe()
 }
 
 // Shutdown gracefully shuts down the server without interrupting active connections.
 func (s *Server) Shutdown(ctx context.Context) error {
+	if s.verbose {
+		logging.EmitVerbose(true, "verbose.shutdown", map[string]any{
+			"signal":    "server.shutdown",
+			"in_flight": 0,
+		}, logging.LevelInfo)
+	}
 	if s.exporter != nil {
 		s.exporter.Shutdown()
 	}
