@@ -4,6 +4,10 @@ chaos-proxy-go supports optional OpenTelemetry tracing via the `otel` top-level 
 
 If `otel` is not configured, the proxy runs without any telemetry export.
 
+The OTLP endpoint is an operator-controlled outbound destination. Configuration
+files and access to `POST /reload` must therefore be restricted to trusted
+administrators; see [Hot reload](hot-reload.md).
+
 ## otel Configuration
 
 Add an `otel` block to `chaos.yaml`:
@@ -30,10 +34,10 @@ global:
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `serviceName` | string | yes | — | Service name label attached to all spans |
-| `endpoint` | string | yes | — | OTLP HTTP base URL (e.g. `http://localhost:4318`) |
-| `flushIntervalMs` | int | no | `5000` | How often to flush the span queue (milliseconds) |
-| `maxBatchSize` | int | no | `100` | Max spans per export request |
-| `maxQueueSize` | int | no | `1000` | Max spans held in memory before oldest are dropped |
+| `endpoint` | string | yes | — | Absolute HTTP(S) OTLP base URL without credentials, query, or fragment |
+| `flushIntervalMs` | int | no | `5000` | Span queue flush interval in milliseconds (`1`–`86400000`) |
+| `maxBatchSize` | int | no | `100` | Max spans per export request (`1`–`1000`) |
+| `maxQueueSize` | int | no | `1000` | Max spans held in memory (`1`–`10000`, at least `maxBatchSize`) |
 | `headers` | map | no | — | Extra HTTP headers added to every OTLP export request |
 
 ## What Gets Traced

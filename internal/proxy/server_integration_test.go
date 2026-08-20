@@ -767,6 +767,39 @@ func TestIntegration_ReloadConfig_InvalidRollback(t *testing.T) {
 	}
 }
 
+func TestNewAndReloadRejectUnsafeOtelAllocationSizes(t *testing.T) {
+	unsafeOtel := &config.OtelConfig{
+		ServiceName:     "test",
+		Endpoint:        "http://localhost:4318",
+		MaxBatchSize:    1 << 30,
+		MaxQueueSize:    1 << 30,
+		FlushIntervalMs: 1000,
+	}
+
+	_, err := New(&config.Config{
+		Target: "http://upstream.example.test",
+		Otel:   unsafeOtel,
+	}, false)
+	if err == nil {
+		t.Fatal("expected New to reject unsafe OTLP allocation sizes")
+	}
+
+	server, err := New(&config.Config{Target: "http://upstream.example.test"}, false)
+	if err != nil {
+		t.Fatalf("create server: %v", err)
+	}
+	result := server.ReloadConfig(&config.Config{
+		Target: "http://upstream.example.test",
+		Otel:   unsafeOtel,
+	})
+	if result.OK {
+		t.Fatal("expected reload to reject unsafe OTLP allocation sizes")
+	}
+	if result.Version != 1 {
+		t.Fatalf("expected active version to remain 1, got %d", result.Version)
+	}
+}
+
 func TestIntegration_ReloadEndpoint_HTTP(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")

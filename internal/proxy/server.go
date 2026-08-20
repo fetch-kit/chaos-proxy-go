@@ -85,6 +85,12 @@ type Server struct {
 
 // New creates a new proxy server
 func New(cfg *config.Config, verbose bool) (*Server, error) {
+	validatedCfg, err := config.Validate(cfg)
+	if err != nil {
+		return nil, err
+	}
+	cfg = validatedCfg
+
 	registry := middleware.DefaultRegistry
 
 	server := &Server{
@@ -256,6 +262,17 @@ func (s *Server) ReloadConfig(newCfg *config.Config) (result ReloadResult) {
 	}()
 
 	current := s.state.Load()
+	validatedCfg, err := config.Validate(newCfg)
+	if err != nil {
+		return ReloadResult{
+			OK:       false,
+			Error:    err.Error(),
+			Version:  current.version,
+			ReloadMs: time.Since(start).Milliseconds(),
+		}
+	}
+	newCfg = validatedCfg
+
 	currentExporter := s.exporter
 	nextExporter, createdNew := reconcileExporter(current.cfg, currentExporter, newCfg)
 
