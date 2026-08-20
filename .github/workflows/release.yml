@@ -1,17 +1,14 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*.*.*'
+  release:
+    types: [published]
 
 permissions: read-all
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Generate app token
         id: app-token
@@ -24,6 +21,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -45,19 +43,14 @@ jobs:
 
       - name: Announce release to Discord
         run: |
-          TAG=${GITHUB_REF#refs/tags/}       # e.g., v0.5.2
-          VERSION=${TAG#v}                   # remove 'v' to match changelog headers
-
-          # Extract changelog block for this version (format: "## [0.5.2] - date")
-          NOTES=$(sed -n "/^## \[$VERSION\]/,/^## /{ /^## /!p }" CHANGELOG.md | sed '/^[[:space:]]*$/d')
+          TAG=$(jq -r '.release.tag_name' "$GITHUB_EVENT_PATH")
+          NOTES=$(jq -r '.release.body // empty' "$GITHUB_EVENT_PATH")
 
           if [ -z "$NOTES" ]; then
-            NOTES="(no changelog entry found for $VERSION)"
+            NOTES="(no release notes found for $TAG)"
           fi
 
-          # Construct JSON with jq, preserving literal line breaks
           PAYLOAD=$(jq -Rn --arg tag "$TAG" --arg repo "$GITHUB_REPOSITORY" --arg notes "$NOTES" \
             '{content: ("**New fetch-kit Release**\nRepository: \($repo) - version: \($tag)\n```\n\($notes)\n```")}')
 
-          # Send to Discord webhook
           curl -sS -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "${{ secrets.DISCORD_WEBHOOK }}"
