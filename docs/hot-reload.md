@@ -2,6 +2,12 @@
 
 chaos-proxy-go supports full runtime config reload without a process restart.
 
+> [!IMPORTANT]
+> `POST /reload` is an administrative endpoint and does not provide built-in
+> authentication. Do not expose it to untrusted networks; restrict access with
+> network policy or an authenticating reverse proxy. Reloaded target and
+> telemetry destinations must be treated as trusted operator configuration.
+
 ## How It Works
 
 When a reload is triggered:

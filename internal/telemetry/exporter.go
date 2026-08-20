@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -133,7 +134,11 @@ func (e *OtlpExporter) exportBatch(spans []*Span) {
 		return
 	}
 
-	endpoint := e.cfg.Endpoint + "/v1/traces"
+	endpoint, err := url.JoinPath(e.cfg.Endpoint, "v1/traces")
+	if err != nil {
+		log.Printf("[otel] failed to build endpoint: %v", err)
+		return
+	}
 	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		log.Printf("[otel] failed to build request: %v", err)
