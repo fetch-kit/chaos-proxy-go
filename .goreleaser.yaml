@@ -1,3 +1,5 @@
+version: 2
+
 project_name: chaos-proxy-go
 builds:
   - main: ./main.go
@@ -6,10 +8,12 @@ builds:
     ldflags:
       - "-X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}"
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 checksum:
   name_template: "checksums.txt"
+changelog:
+  disable: true
 release:
   github:
     owner: fetch-kit
