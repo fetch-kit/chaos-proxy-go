@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
 
+permissions: read-all
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest

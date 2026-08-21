@@ -1,4 +1,5 @@
 [![Build](https://github.com/fetch-kit/chaos-proxy-go/actions/workflows/ci.yml/badge.svg)](https://github.com/fetch-kit/chaos-proxy-go/actions)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/fetch-kit/chaos-proxy-go/badge)](https://scorecard.dev/viewer/?uri=github.com/fetch-kit/chaos-proxy-go)
 [![GitHub stars](https://img.shields.io/github/stars/fetch-kit/chaos-proxy-go?style=social)](https://github.com/fetch-kit/chaos-proxy-go)
 
 # chaos-proxy-go
