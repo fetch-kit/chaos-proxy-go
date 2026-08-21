@@ -14,6 +14,9 @@ type FailNthConfig struct {
 
 // FailNthMiddleware returns a middleware that fails every Nth request.
 func FailNthMiddleware(conf FailNthConfig) func(http.Handler) http.Handler {
+	if conf.N <= 0 {
+		return func(next http.Handler) http.Handler { return next }
+	}
 	var count int64
 	status := conf.Status
 	if status == 0 {
@@ -26,7 +29,7 @@ func FailNthMiddleware(conf FailNthConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			c := atomic.AddInt64(&count, 1)
-			if int(c)%conf.N == 0 {
+			if c%int64(conf.N) == 0 {
 				w.WriteHeader(status)
 				_, _ = w.Write([]byte(body))
 				return

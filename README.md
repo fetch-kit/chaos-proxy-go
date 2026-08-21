@@ -273,6 +273,34 @@ Register custom middleware in Go. See the `internal/middleware` package for exam
 
 ---
 
+## Development and Testing
+
+Run the deterministic test suite, static checks, and dependency scan:
+
+```sh
+go test ./...
+go vet ./...
+golangci-lint run
+govulncheck ./...
+```
+
+### Native Go Fuzzing
+
+The repository includes native Go fuzz targets for configuration, middleware state, routing, proxy bodies, reloads, and telemetry. The normal test command runs every target's committed seed corpus, so regressions remain part of regular CI:
+
+```sh
+go test ./...
+```
+
+Coverage-guided input generation runs one target at a time. List the available targets, then select a package and target with a bounded duration:
+
+```sh
+go test ./... -list '^Fuzz'
+go test ./internal/config -run '^$' -fuzz '^FuzzParseJSONConfiguration$' -fuzztime=30s
+```
+
+---
+
 ## Security & Limitations
 
 - Proxy forwards all headers; be careful with sensitive tokens.
