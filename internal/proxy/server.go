@@ -212,10 +212,8 @@ func (s *Server) buildState(cfg *config.Config, version int, exporter *telemetry
 		}
 
 		method, path := parseRoute(route)
-		if method == "" {
-			router.HandleFunc(path, proxyHandler.ServeHTTP)
-		} else {
-			router.Method(method, path, proxyHandler)
+		if err := registerConfiguredRoute(router, route, method, path, proxyHandler); err != nil {
+			return nil, err
 		}
 	}
 
@@ -392,6 +390,23 @@ func parseRoute(route string) (method, path string) {
 		return parts[0], parts[1]
 	}
 	return "", route
+}
+
+// registerConfiguredRoute converts chi's pattern-validation panics into
+// configuration errors so malformed startup or reload input cannot crash the process.
+func registerConfiguredRoute(router *chi.Mux, route, method, path string, handler http.Handler) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("invalid route %q: %v", route, recovered)
+		}
+	}()
+
+	if method == "" {
+		router.Handle(path, handler)
+	} else {
+		router.Method(method, path, handler)
+	}
+	return nil
 }
 
 // createProxyHandler creates the proxy handler for a given target.

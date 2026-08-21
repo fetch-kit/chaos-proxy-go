@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -37,5 +38,28 @@ func TestFailNthMiddlewareFailsOnNthRequest(t *testing.T) {
 				t.Errorf("expected body 'ok' on request %d, got '%s'", i, rec.Body.String())
 			}
 		}
+	}
+}
+
+func TestFailNthMiddlewareNonPositiveNPassesThrough(t *testing.T) {
+	for _, n := range []int{0, -1} {
+		t.Run(fmt.Sprintf("n=%d", n), func(t *testing.T) {
+			calls := 0
+			handler := FailNthMiddleware(FailNthConfig{N: n})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				calls++
+				w.WriteHeader(http.StatusNoContent)
+			}))
+
+			for range 2 {
+				recorder := httptest.NewRecorder()
+				handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
+				if recorder.Code != http.StatusNoContent {
+					t.Fatalf("got status %d, want %d", recorder.Code, http.StatusNoContent)
+				}
+			}
+			if calls != 2 {
+				t.Fatalf("downstream called %d times, want 2", calls)
+			}
+		})
 	}
 }
