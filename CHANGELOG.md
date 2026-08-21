@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.1](https://github.com/fetch-kit/chaos-proxy-go/compare/v0.6.0...v0.6.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* add native fuzz tests and prevent configuration panics ([#24](https://github.com/fetch-kit/chaos-proxy-go/issues/24)) ([9a9925c](https://github.com/fetch-kit/chaos-proxy-go/commit/9a9925cb1dd94cc9d97f6e21778c5cb4dfb19660))
+* bound telemetry exporter allocations ([#22](https://github.com/fetch-kit/chaos-proxy-go/issues/22)) ([5c7d6ee](https://github.com/fetch-kit/chaos-proxy-go/commit/5c7d6ee76234ae0a20a206a91547311257e62b51))
+* validate telemetry exporter configuration ([#20](https://github.com/fetch-kit/chaos-proxy-go/issues/20)) ([07c05f7](https://github.com/fetch-kit/chaos-proxy-go/commit/07c05f7f07aef4427ed60d6538bab0b3db1df03e))
+
 ## [0.6.0] - 2026-07-20
 ### Added
 - Structured `--verbose` observability logging: `key=value` events for startup,
