@@ -12,6 +12,11 @@ import (
 	"chaos-proxy-go/internal/config"
 )
 
+const (
+	initialSpanQueueCapacity = 100
+	maxExportBatchSize       = 1000
+)
+
 // OtlpExporter batches spans and ships them to an OTLP HTTP endpoint.
 type OtlpExporter struct {
 	cfg          config.OtelConfig
@@ -27,7 +32,7 @@ type OtlpExporter struct {
 func NewExporter(cfg config.OtelConfig) *OtlpExporter {
 	e := &OtlpExporter{
 		cfg:   cfg,
-		queue: make([]*Span, 0, cfg.MaxBatchSize),
+		queue: make([]*Span, 0, initialSpanQueueCapacity),
 		done:  make(chan struct{}),
 	}
 	e.ticker = time.NewTicker(time.Duration(cfg.FlushIntervalMs) * time.Millisecond)
@@ -92,6 +97,12 @@ func (e *OtlpExporter) flushLoop() {
 // drainBatch takes up to MaxBatchSize spans from the queue. Must be called with lock held.
 func (e *OtlpExporter) drainBatch() []*Span {
 	n := e.cfg.MaxBatchSize
+	if n > maxExportBatchSize {
+		n = maxExportBatchSize
+	}
+	if n <= 0 {
+		return nil
+	}
 	if len(e.queue) < n {
 		n = len(e.queue)
 	}
