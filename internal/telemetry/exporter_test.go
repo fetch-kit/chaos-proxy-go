@@ -110,3 +110,42 @@ func TestExporter_QueueOverflowDropsOldest(t *testing.T) {
 		t.Errorf("expected second to be oldest remaining, got %s", q[0].TraceID)
 	}
 }
+
+func TestExporter_DrainBatchCapsAllocationWhenConfigIsCorrupted(t *testing.T) {
+	queue := make([]*Span, maxExportBatchSize+1)
+	e := &OtlpExporter{
+		cfg: config.OtelConfig{
+			MaxBatchSize: int(^uint(0) >> 1),
+		},
+		queue: queue,
+	}
+
+	e.mu.Lock()
+	batch := e.drainBatch()
+	e.mu.Unlock()
+
+	if len(batch) != maxExportBatchSize {
+		t.Fatalf("expected batch to be capped at %d spans, got %d", maxExportBatchSize, len(batch))
+	}
+	if len(e.queue) != 1 {
+		t.Fatalf("expected one span to remain queued, got %d", len(e.queue))
+	}
+}
+
+func TestExporter_DrainBatchRejectsNonPositiveSize(t *testing.T) {
+	e := &OtlpExporter{
+		cfg:   config.OtelConfig{MaxBatchSize: -1},
+		queue: []*Span{{TraceID: "still-queued"}},
+	}
+
+	e.mu.Lock()
+	batch := e.drainBatch()
+	e.mu.Unlock()
+
+	if batch != nil {
+		t.Fatalf("expected no batch, got %d spans", len(batch))
+	}
+	if len(e.queue) != 1 {
+		t.Fatalf("expected the queue to remain unchanged, got %d spans", len(e.queue))
+	}
+}
